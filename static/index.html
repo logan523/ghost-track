@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Track — Live ADS-B Anomaly Monitor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="/static/style.css?v=2" />
+</head>
+<body>
+
+<!-- Threat bar -->
+<div id="threat-bar" role="status" aria-live="polite" aria-label="Region threat levels"></div>
+
+<!-- Map area -->
+<main id="map" role="application" aria-label="Live air traffic map">
+  <div id="map-controls">
+    <button id="btn-heatmap" class="map-ctrl" title="Toggle anomaly heatmap">Heatmap</button>
+    <button id="btn-borders" class="map-ctrl" title="Toggle geographic context">Borders</button>
+  </div>
+</main>
+
+<!-- Sidebar -->
+<aside id="sidebar" aria-label="Alert feed and controls">
+  <header id="header">
+    <h1>Ghost Track</h1>
+    <div id="stats-bar" role="status" aria-live="polite">
+      <span class="stat"><span class="stat-value" id="stat-aircraft">0</span><span class="stat-label">aircraft</span></span>
+      <span class="stat"><span class="stat-value" id="stat-anomalies">0</span><span class="stat-label">anomalies</span></span>
+      <span class="stat"><span class="stat-value" id="stat-reports">0</span><span class="stat-label">alerts</span></span>
+    </div>
+    <div id="status-indicator">
+      <span id="status-dot" class="status-connecting"></span>
+      <span id="status-label">connecting</span>
+    </div>
+    <button id="replay-tutorial" aria-label="Replay tutorial" title="Replay tutorial">?</button>
+  </header>
+
+  <div id="region-selector">
+    <label for="region-select" id="region-label">Region</label>
+    <select id="region-select" aria-label="Filter by region">
+      <option value="">All regions</option>
+    </select>
+  </div>
+
+  <!-- Timeline sparkline -->
+  <canvas id="timeline-canvas" aria-label="Anomaly frequency timeline"></canvas>
+
+  <section id="alert-feed" aria-label="Alert feed">
+    <h2>Alert Feed</h2>
+    <div id="filter-bar">
+      <label id="filter-label" for="ghost-score-filter">Min Ghost Score</label>
+      <div id="filter-controls">
+        <input type="range" id="ghost-score-filter" min="0" max="100" value="0" step="5">
+        <span id="ghost-score-value">0</span>
+      </div>
+    </div>
+    <div id="reports-list" role="feed" aria-live="polite">
+      <div class="empty-state">No alerts yet. Anomalies will appear here as the detectors process live data.</div>
+    </div>
+  </section>
+</aside>
+
+<!-- Aircraft detail panel -->
+<div id="detail-panel" class="detail-hidden" aria-label="Aircraft details">
+  <div id="detail-header">
+    <h2 id="detail-title"></h2>
+    <button id="detail-close" aria-label="Close detail panel">&times;</button>
+  </div>
+  <div id="detail-content">
+    <div id="detail-stats"></div>
+    <canvas id="detail-alt-chart" width="320" height="120"></canvas>
+    <div id="detail-anomalies"></div>
+    <div id="detail-actions">
+      <button id="detail-export" class="btn-fly">Export report</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tutorial overlay -->
+<div id="tutorial-overlay" class="tutorial-hidden">
+  <div id="tutorial-backdrop"></div>
+  <div id="tutorial-card">
+    <div id="tutorial-step-dots"></div>
+    <p id="tutorial-title"></p>
+    <p id="tutorial-body"></p>
+    <div id="tutorial-nav">
+      <button id="tutorial-skip" class="tutorial-btn-ghost">Skip tour</button>
+      <div id="tutorial-action-group">
+        <button id="tutorial-prev" class="tutorial-btn-secondary">Back</button>
+        <button id="tutorial-next" class="tutorial-btn-primary">Next</button>
+        <button id="tutorial-done" class="tutorial-btn-primary tutorial-hidden">Got it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast-hidden" role="alert" aria-live="assertive"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/tutorial.js?v=2"></script>
+<script src="/static/app.js?v=6"></script>
+</body>
+</html>
