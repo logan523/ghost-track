@@ -224,23 +224,55 @@ class OpenSkyClient:
 # ── helper functions ──────────────────────────────────────────────────
 
 def _parse_state_vectors(raw_states: list) -> list[StateVector]:
-    """Parse OpenSky's raw state array format into StateVector objects."""
+    """Parse OpenSky's raw state array format into StateVector objects.
+
+    OpenSky row indices:
+      0 icao24, 1 callsign, 2 origin_country, 3 time_position, 4 last_contact,
+      5 lon, 6 lat, 7 baro_alt, 8 on_ground, 9 velocity, 10 true_track,
+      11 vertical_rate, 12 sensors, 13 geo_alt, 14 squawk, 15 spi,
+      16 position_source, 17 category
+    """
     parsed = []
     for row in raw_states:
         if row is None or len(row) < 8:
             continue
         try:
+            lat = float(row[6]) if row[6] is not None else None
+            lon = float(row[5]) if row[5] is not None else None
+            if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
+                continue
+            # Prefer last_contact when time_position is missing
+            t_pos = row[3] if len(row) > 3 else None
+            t_contact = row[4] if len(row) > 4 else None
+            t_src = t_pos or t_contact
+            ts = (
+                datetime.fromtimestamp(t_src, tz=timezone.utc)
+                if t_src
+                else datetime.now(timezone.utc)
+            )
+            last_contact = (
+                datetime.fromtimestamp(t_contact, tz=timezone.utc)
+                if t_contact
+                else None
+            )
             sv = StateVector(
-                icao24=str(row[0]).strip(),
+                icao24=str(row[0]).strip().lower(),
                 callsign=(row[1] or "").strip() if row[1] else "",
-                time=datetime.fromtimestamp(row[3], tz=timezone.utc) if row[3] else datetime.now(timezone.utc),
-                latitude=float(row[6]) if row[6] is not None else 0.0,
-                longitude=float(row[5]) if row[5] is not None else 0.0,
+                time=ts,
+                latitude=lat,
+                longitude=lon,
                 altitude=float(row[7]) if row[7] is not None else float("nan"),
                 velocity=float(row[9]) if len(row) > 9 and row[9] is not None else float("nan"),
                 heading=float(row[10]) if len(row) > 10 and row[10] is not None else float("nan"),
                 vertical_rate=float(row[11]) if len(row) > 11 and row[11] is not None else float("nan"),
                 on_ground=bool(row[8]) if len(row) > 8 and row[8] is not None else False,
+                origin_country=(row[2] or "").strip() if len(row) > 2 and row[2] else "",
+                last_contact=last_contact,
+                geo_altitude=float(row[13]) if len(row) > 13 and row[13] is not None else float("nan"),
+                squawk=str(row[14]).strip() if len(row) > 14 and row[14] is not None else "",
+                spi=bool(row[15]) if len(row) > 15 and row[15] is not None else False,
+                position_source=int(row[16]) if len(row) > 16 and row[16] is not None else 0,
+                category=int(row[17]) if len(row) > 17 and row[17] is not None else 0,
             )
             parsed.append(sv)
         except (ValueError, TypeError, IndexError) as e:

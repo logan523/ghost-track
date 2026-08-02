@@ -21,6 +21,14 @@ class StateVector:
     on_ground: bool = False
     region: str = ""
     source: str = "opensky"  # data source identifier
+    # Extended OpenSky fields (optional)
+    origin_country: str = ""
+    last_contact: Optional[datetime] = None
+    geo_altitude: float = float("nan")
+    squawk: str = ""
+    spi: bool = False
+    position_source: int = 0
+    category: int = 0
 
 
 @dataclass

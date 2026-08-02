@@ -22,7 +22,7 @@ from detector.gpsjam import get_gpsjam_context, classify_interference
 from detector.weather import get_weather_prompt_fragment, get_weather_context
 from detector.cross_validate import enrich_anomaly_with_cross_check
 from triage.clustering import cluster_anomalies
-from triage.context import build_context_prompt, calibrate_severity, get_region_context
+from triage.context import build_context_prompt, get_region_context
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +218,16 @@ Respond with ONLY the JSON object, no preamble."""
             response = self._call_llm(prompt)
 
             region = cluster[0].region if cluster else "unknown"
-            raw_sev = response.get("severity_score", 1)
-            calibrated_sev = max(1, min(5, round(raw_sev)))
+            raw_from_llm = response.get("severity_score", 1)
+            try:
+                raw_from_llm = float(raw_from_llm)
+            except (TypeError, ValueError):
+                raw_from_llm = 1.0
+            # Region modifier from context (0.7–1.3 style); apply to 1–5 scale
+            ctx = get_region_context(region)
+            modifier = float(ctx.get("severity_modifier", 1.0))
+            from detector.scoring import calibrate_severity_1_to_5
+            severity_raw, calibrated_sev = calibrate_severity_1_to_5(raw_from_llm, modifier)
 
             sorted_cluster = sorted(cluster, key=lambda a: a.time)
             first = sorted_cluster[0]
@@ -251,6 +259,8 @@ Respond with ONLY the JSON object, no preamble."""
                 cross_references=cross_refs,
                 claims=response.get("claims", []),
             )
+            # Attach raw for API (not on dataclass; server reads via getattr)
+            report.severity_raw = severity_raw  # type: ignore[attr-defined]
             reports.append(report)
 
         logger.info(

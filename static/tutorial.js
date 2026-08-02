@@ -3,11 +3,11 @@
 (function() {
   var KEY = 'ghost-track-tutorial-v4';
   var STEPS = [
-    { title: 'Live air traffic', body: 'Each icon is a real aircraft. Amber = clean, red = flagged. They update every 5 seconds from a live receiver network. Dashed lines show recent flight paths, dotted lines project where they are heading.' },
-    { title: 'Stats at a glance', body: 'Three numbers: aircraft in view, total anomalies detected since startup, and AI-triage alerts generated. These tick up in real time as events unfold.' },
-    { title: 'AI triage', body: 'When detectors flag an anomaly, an AI agent writes a plain-English summary. Each alert has a severity rating (1 to 5), a Ghost Score (0 to 100), and a recommended human action. Click any alert to expand and read the full text.' },
-    { title: 'Filtering', body: 'Use the Ghost Score slider to hide low-significance alerts. Higher scores mean stronger statistical evidence. The filter combines Mahalanobis distance, CUSUM drift accumulation, cluster density, and anomaly persistence.' },
-    { title: 'Ready', body: 'The system is live. Watch for red planes and expanding alerts. Click the ? button anytime to replay this tour. Switch regions with the dropdown to see different contested airspace.' }
+    { title: 'Posture first', body: 'The top banner shows LIVE, SYNTHETIC DEMO, or DEGRADED. Threat segments are labeled by region — click one to filter. This is ops posture, not decoration.' },
+    { title: 'Map symbology', body: 'Chevrons: amber = clean, red ring = flagged, gold ring = selected. Solid trails are past track; dashed lines are short forward projection only — not past path.' },
+    { title: 'Action-first alerts', body: 'Each alert leads with the recommended action, then severity and Ghost Score from the server. Expand for evidence chips: WEATHER, XCHECK, JAM, ID.' },
+    { title: 'Filtering', body: 'Ghost Score filter uses the server score (not a client estimate). Higher scores mean stronger statistical evidence across Mahalanobis, CUSUM, persistence, and density.' },
+    { title: 'Ready', body: 'Watch flagged chevrons and action lines. Click ? to replay. Switch regions via the dropdown or threat bar. Phase-1 detector metrics are in the footer.' }
   ];
 
   var step = 0;

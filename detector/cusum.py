@@ -292,11 +292,19 @@ class CUSUMDetector:
         return result
 
     def process_result(self, result: DetectionResult) -> DetectionResult:
-        """Full pipeline: run CUSUM on a Kalman DetectionResult, annotate flags."""
+        """Full pipeline: run CUSUM on a Kalman DetectionResult, annotate flags.
+
+        Only annotates NEW alarm indices (not previously emitted) so callers
+        do not re-ingest historical drift flags every poll cycle.
+        """
+        icao = result.track.icao24
+        prev = self._track_cusum.get(icao) if icao else None
+        prev_alarms = set(prev["alarms_out"]) if prev else set()
         cusum_pos, cusum_neg, alarms = self.detect(
-            result.filter_states, icao24=result.track.icao24
+            result.filter_states, icao24=icao
         )
-        return self.annotate_result(result, cusum_pos, cusum_neg, alarms)
+        new_alarms = [i for i in alarms if i not in prev_alarms]
+        return self.annotate_result(result, cusum_pos, cusum_neg, new_alarms)
 
 
 def _classify_region(lat: float, lon: float) -> str:

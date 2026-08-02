@@ -182,11 +182,11 @@ class KalmanDetector:
                     break
 
             if start_idx >= len(states):
-                # No new states — return cached result
+                # No new states — do not re-emit historical anomalies
                 return DetectionResult(
                     track=track,
                     filter_states=list(saved["filter_states"]),
-                    anomalies=list(saved["anomalies"]),
+                    anomalies=[],
                     flagged=len(saved["anomalies"]) > 0,
                 )
 
@@ -263,19 +263,25 @@ class KalmanDetector:
                     )
                 )
 
-        # Persist updated state
+        # Persist updated state (cap history for memory)
         entry = self._track_states[icao24]
         entry["x"] = x
         entry["P"] = P
         entry["last_time"] = states[-1].time
         entry["filter_states"].extend(new_fs)
         entry["anomalies"].extend(new_anomalies)
+        max_hist = 120
+        if len(entry["filter_states"]) > max_hist:
+            entry["filter_states"] = entry["filter_states"][-max_hist:]
+        if len(entry["anomalies"]) > max_hist:
+            entry["anomalies"] = entry["anomalies"][-max_hist:]
 
+        # Emit only THIS cycle's anomalies (prevents store re-ingestion)
         return DetectionResult(
             track=track,
             filter_states=list(entry["filter_states"]),
-            anomalies=list(entry["anomalies"]),
-            flagged=len(entry["anomalies"]) > 0,
+            anomalies=list(new_anomalies),
+            flagged=len(entry["anomalies"]) > 0 or len(new_anomalies) > 0,
         )
 
 
