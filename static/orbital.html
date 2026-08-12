@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Orbit Ghost — SDA residual / maneuver console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css?v=orbital1" />
+<link rel="stylesheet" href="/static/orbital.css?v=1" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body class="orbital-page">
+
+<div id="mode-banner" class="mode-connecting" role="status" aria-live="polite">
+  <span id="mode-label">CONNECTING</span>
+  <span id="mode-detail">orbit ghost</span>
+  <span id="mode-age" class="mode-age">—</span>
+</div>
+
+<div id="orbital-shell">
+  <main id="globe-pane" aria-label="3D orbit visualization">
+    <canvas id="globe-canvas"></canvas>
+    <div id="globe-hud">
+      <div class="hud-title">ORBIT GHOST</div>
+      <div class="hud-sub">SGP4 · RTN residual · CUSUM</div>
+      <div id="globe-legend">
+        <span class="leg"><i class="dot ref"></i> reference</span>
+        <span class="leg"><i class="dot obs"></i> observed</span>
+        <span class="leg"><i class="dot flag"></i> residual peak</span>
+      </div>
+    </div>
+    <div id="globe-hint">drag rotate · scroll zoom · residual ribbon scales offset</div>
+  </main>
+
+  <aside id="orbital-sidebar" aria-label="Controls and alerts">
+    <header id="header">
+      <div class="nav-row">
+        <a class="nav-link" href="/">← Ghost Track</a>
+        <span class="nav-sep">/</span>
+        <span class="nav-here">Orbit Ghost</span>
+      </div>
+      <h1>Orbit Ghost</h1>
+      <p class="lede">Synthetic Δv residual detection for SDA training / experiment tooling. Human-tasked path only.</p>
+      <div id="stats-bar" role="status">
+        <span class="stat"><span class="stat-value" id="stat-catalog">—</span><span class="stat-label">catalog</span></span>
+        <span class="stat"><span class="stat-value" id="stat-flagged">—</span><span class="stat-label">flagged</span></span>
+        <span class="stat"><span class="stat-value" id="stat-maxres">—</span><span class="stat-label">max res km</span></span>
+      </div>
+    </header>
+
+    <section class="panel" aria-label="Detection controls">
+      <h2>Detect</h2>
+      <label class="field">
+        <span>Δv (m/s)</span>
+        <input type="range" id="dv-slider" min="0" max="10" step="0.1" value="0" />
+        <output id="dv-value" for="dv-slider">0.0</output>
+      </label>
+      <label class="field">
+        <span>Samples</span>
+        <input type="number" id="n-samples" min="40" max="400" value="120" />
+      </label>
+      <div class="btn-row">
+        <button type="button" id="btn-clean" class="btn-secondary">Clean track</button>
+        <button type="button" id="btn-detect" class="btn-primary">Run detect</button>
+      </div>
+      <p id="detect-status" class="status-line" aria-live="polite">Ready.</p>
+    </section>
+
+    <section class="panel" aria-label="Evaluation">
+      <h2>Eval suite</h2>
+      <p class="hint">Labeled synthetic: clean vs fixed Δv. Same Ghost Track posture — metrics first.</p>
+      <div class="btn-row">
+        <button type="button" id="btn-eval" class="btn-primary">Run eval</button>
+      </div>
+      <div id="metrics-card" class="metrics-card metrics-empty">
+        <div class="m-row"><span>F1</span><strong id="m-f1">—</strong></div>
+        <div class="m-row"><span>Precision</span><strong id="m-p">—</strong></div>
+        <div class="m-row"><span>Recall</span><strong id="m-r">—</strong></div>
+        <div class="m-row"><span>Δv @ 95%</span><strong id="m-bound">—</strong></div>
+        <p id="m-disclosure" class="disclosure"></p>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Flags">
+      <h2>Flags</h2>
+      <div id="flags-list" class="flags-list">
+        <div class="empty-state">No flags · run detect with Δv &gt; 0</div>
+      </div>
+    </section>
+
+    <footer id="portfolio-footer">
+      Orbit Ghost P1 · fixture default · CelesTrak optional · no actuation
+    </footer>
+  </aside>
+</div>
+
+<script type="module" src="/static/orbital.js?v=1"></script>
+</body>
+</html>

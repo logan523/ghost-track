@@ -29,3 +29,6 @@ data/labeled/*
 .vscode/
 .DS_Store
 *.swp
+
+# Orbit Ghost CelesTrak cache
+data/orbital/cache/

@@ -32,6 +32,7 @@ from detector.live_adsb import fetch_live_region
 import random
 import math
 from triage.agent import TriageAgent
+from orbital.api import router as orbital_router
 
 # Real data by default. Set ALLOW_SYNTHETIC=1 only for offline demos.
 ALLOW_SYNTHETIC = os.getenv("ALLOW_SYNTHETIC", "0") == "1"
@@ -41,6 +42,9 @@ logger = logging.getLogger("ghost-track")
 
 app = FastAPI(title="Ghost Track", version="0.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Orbit Ghost (SDA residual / maneuver detection) — package under this repo
+app.include_router(orbital_router)
 
 
 @app.middleware("http")
@@ -804,6 +808,13 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.get("/")
 async def root():
     return FileResponse(os.path.join(static_dir, "index.html"))
+
+
+@app.get("/orbital-ui")
+@app.get("/orbit")
+async def orbital_ui():
+    """Orbit Ghost 3D console (SDA residual / maneuver viz)."""
+    return FileResponse(os.path.join(static_dir, "orbital.html"))
 
 
 # ── Startup ───────────────────────────────────────────────────────────
