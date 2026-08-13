@@ -4,7 +4,7 @@ Real-time **ADS-B** track-anomaly triage system, plus **Orbit Ghost** — a Spac
 
 **Air architecture:** Kalman filter + CUSUM detector (Python) → LLM triage agent → live map + alert feed.
 
-**Space architecture (Orbit Ghost):** CelesTrak/fixture GP → SGP4 → RTN residual → CUSUM → FastAPI `/orbital/*` + synthetic eval suite.
+**Space architecture (Orbit Ghost):** dual-source residual — **NASA ISS OEM (JSC TOPO, real ephemeris)** as observed track vs **CelesTrak TLE → SGP4** as reference → ECEF-aligned RTN residual → CUSUM. Synthetic Δv remains for training/eval only.
 
 ## Phase 1 Results (Offline Validation)
 
@@ -21,7 +21,32 @@ Real-time **ADS-B** track-anomaly triage system, plus **Orbit Ghost** — a Spac
 
 ## Orbit Ghost (SDA residual detection)
 
-Same control loop as Ghost Track, different measurement model: public TLEs / OMM → SGP4 → residual in RTN (radial / along-track / cross-track) → windowed CUSUM → operator flags (heuristic actions; LLM triage is P1.5).
+Same control loop as Ghost Track, different measurement model.
+
+### Real observations (primary demo path)
+
+| Role | Source | Frame |
+|------|--------|-------|
+| **Observed** | [NASA ISS OEM](https://nasa-public-data.s3.amazonaws.com/iss-coords/current/ISS_OEM/ISS.OEM_J2K_EPH.txt) (JSC TOPO, CCSDS OEM, public S3, no key) | EME2000 |
+| **Reference** | CelesTrak / fixture TLE → SGP4 | TEME |
+| **Residual** | RTN after approximate ECEF alignment (Earth rotation only) | disclosed floor |
+
+```bash
+# Real dual-source residual (fixture OEM offline; live by default in auto)
+ORBITAL_SOURCE=fixture ORBITAL_OEM_SOURCE=fixture .venv/bin/python -c "
+from orbital.observe import observe_iss_residual
+r = observe_iss_residual(n_samples=40, oem_source='fixture')
+print(r.name, 'max_km=', r.meta['max_magnitude_km'], 'mode=', r.meta['observation_mode'])
+print(r.meta['frame_disclosure'][:80], '...')
+"
+
+# Live NASA OEM (network)
+# POST /orbital/observe/iss  {\"n_samples\": 90, \"oem_source\": \"auto\"}
+```
+
+**Honesty:** residual includes model + frame mismatch (no polar motion/nutation; SGP4 vs high-fidelity OEM). This is **not** radar observation noise and **not** a claim of real maneuver ground truth. Synthetic Δv remains labeled training only.
+
+Optional fallback: NASA SSCWeb (`orbital/ssc.py`) for multi-mission location queries.
 
 ### Synthetic suite metrics (reproducible offline)
 
@@ -35,7 +60,7 @@ Same control loop as Ghost Track, different measurement model: public TLEs / OMM
 
 ```bash
 # Orbit Ghost tests
-ORBITAL_SOURCE=fixture .venv/bin/python -m pytest tests/test_orbital_*.py -q
+ORBITAL_SOURCE=fixture ORBITAL_OEM_SOURCE=fixture .venv/bin/python -m pytest tests/test_orbital_*.py -q
 
 # Run eval suite
 ORBITAL_SOURCE=fixture .venv/bin/python -c "
@@ -44,18 +69,21 @@ m = run_synthetic_suite(n_clean=20, n_anomalous=20, dv_m_s=2.0, seed=42)
 print(f'F1={m.f1:.3f}  Δv_boundary={m.dv_boundary_m_s} m/s')
 "
 
-# API + Orbit Ghost 3D console
-ORBITAL_SOURCE=fixture uvicorn server:app --port 8765
+# API + Orbit Ghost field console (live CelesTrak by default)
+uvicorn server:app --port 8765
+# Offline CI: ORBITAL_SOURCE=fixture ORBITAL_OEM_SOURCE=fixture uvicorn server:app --port 8765
 # UI:  http://localhost:8765/orbit
-# GET  /orbital/health
-# GET  /orbital/catalog
-# POST /orbital/detect   {\"dv_m_s\": 5.0}  → trail + flags for globe
-# POST /orbital/eval/run {\"n_clean\": 15, \"n_anomalous\": 15, \"dv_m_s\": 2.0}
+# GET  /orbital/health?group=stations
+# GET  /orbital/observe/status
+# POST /orbital/observe/iss {\"n_samples\": 90, \"oem_source\": \"auto\"}  → NASA OEM vs SGP4
+# POST /orbital/field/scan  {\"group\": \"stations\"}  → multi-track orbits + custody age
+# POST /orbital/detect      {\"norad_id\": 25544, \"dv_m_s\": 5.0}  → synthetic Δv lab
+# POST /orbital/eval/run    {\"n_clean\": 15, \"n_anomalous\": 15, \"dv_m_s\": 2.0}
 ```
 
-**Backends:** `ORBITAL_SOURCE=fixture` (default, CI) | `celestrak` (2h disk cache, GROUP=stations). Space-Track is stubbed for P1.
+**Backends:** `ORBITAL_SOURCE=celestrak` (**default**, live public TLEs via FORMAT=tle, 2h disk cache) | `fixture` (CI/offline multi-object stations JSON). OEM: `ORBITAL_OEM_SOURCE=auto|live|fixture|cache` (default auto). Groups: `stations`, `visual`, `active`, `starlink` (large groups capped at 300; override with `ORBITAL_MAX_OBJECTS`). Space-Track still stubbed.
 
-**Package:** `orbital/` — does not reuse air `StateVector` / lat-lon Kalman (wrong physics for sparse GP data).
+**Package:** `orbital/` — `oem.py` / `observe.py` / `frames.py` / `ssc.py` for dual-source path; does not reuse air `StateVector` / lat-lon Kalman.
 
 ## Quick Start
 
@@ -107,14 +135,19 @@ ghost-track/
 │   ├── cross_validate.py  # ADS-B Exchange cross-check fallback
 │   └── models.py       # ADS-B data models
 ├── orbital/            # Orbit Ghost (SDA residual / maneuver)
+│   ├── oem.py          # NASA ISS OEM parse/fetch/cache
+│   ├── observe.py      # dual-source OEM vs SGP4 residual
+│   ├── frames.py       # ECEF alignment + disclosure
+│   ├── ssc.py          # SSCWeb optional multi-mission
 │   ├── propagate.py    # SGP4 wrapper
 │   ├── residual.py     # RTN residual series
 │   ├── cusum.py        # CUSUM on residual magnitude
-│   ├── synthetic.py    # Δv injector for eval
+│   ├── synthetic.py    # Δv injector for eval (training)
 │   ├── detect.py       # pipeline
 │   ├── ingest.py       # fixture + CelesTrak cache backends
 │   ├── eval/           # F1 + Δv boundary suite
 │   └── api.py          # FastAPI /orbital/*
+
 ├── triage/             # AI triage layer (air)
 │   ├── agent.py        # Claude API triage agent (injectable LLM)
 │   ├── clustering.py   # DBSCAN alert deduplication

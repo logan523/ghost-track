@@ -1,47 +1,52 @@
 """Ingest backend tests."""
 
-import json
 from pathlib import Path
 
 import httpx
 
-from orbital.ingest import CelesTrakBackend, FixtureBackend, get_backend
+from orbital.ingest import (
+    CelesTrakBackend,
+    FixtureBackend,
+    get_backend,
+    parse_tle_blob,
+)
 from orbital.synthetic import iss_element
 
 
 def test_fixture_backend_loads():
     b = FixtureBackend()
     els = b.list_elements()
-    assert len(els) >= 1
+    assert len(els) >= 10  # multi-object stations fixture
     assert els[0].line1.startswith("1 ")
     st = b.status()
     assert st.mode == "FIXTURE"
 
 
-def test_get_backend_default_fixture(monkeypatch):
+def test_get_backend_default_celestrak(monkeypatch):
     monkeypatch.delenv("ORBITAL_SOURCE", raising=False)
     b = get_backend()
+    assert isinstance(b, CelesTrakBackend)
+
+
+def test_get_backend_fixture_env(monkeypatch):
+    monkeypatch.setenv("ORBITAL_SOURCE", "fixture")
+    b = get_backend()
     assert isinstance(b, FixtureBackend)
+
+
+def test_parse_tle_blob():
+    el = iss_element()
+    text = f"{el.name}\n{el.line1}\n{el.line2}\n"
+    out = parse_tle_blob(text)
+    assert len(out) == 1
+    assert out[0].norad_id == 25544
 
 
 def test_celestrak_cache_hit_no_http(tmp_path, monkeypatch):
     cache = tmp_path / "cache"
     cache.mkdir()
-    # Minimal OMM-like with TLE lines
     el = iss_element()
-    payload = [
-        {
-            "NORAD_CAT_ID": el.norad_id,
-            "OBJECT_NAME": el.name,
-            "EPOCH": "2024-01-01T12:00:00",
-            "TLE_LINE1": el.line1,
-            "TLE_LINE2": el.line2,
-            "INCLINATION": 51.6,
-            "MEAN_MOTION": 15.7,
-            "ECCENTRICITY": 0.0006,
-        }
-    ]
-    (cache / "stations.json").write_text(json.dumps(payload))
+    (cache / "stations.tle").write_text(f"{el.name}\n{el.line1}\n{el.line2}\n")
 
     def boom(*_a, **_k):
         raise AssertionError("HTTP should not be called on cache hit")
@@ -76,3 +81,9 @@ def test_celestrak_403_degraded(tmp_path, monkeypatch):
     els = b.list_elements()
     assert len(els) >= 1  # fixture fallback
     assert b.status().mode == "DEGRADED"
+
+
+def test_apply_limit_cap():
+    b = FixtureBackend()
+    els = b.list_elements(limit=3)
+    assert len(els) == 3

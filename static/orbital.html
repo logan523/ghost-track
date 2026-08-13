@@ -7,13 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/static/style.css?v=orbital1" />
-<link rel="stylesheet" href="/static/orbital.css?v=1" />
+<link rel="stylesheet" href="/static/style.css?v=orbital6" />
+<link rel="stylesheet" href="/static/orbital.css?v=10" />
 <script type="importmap">
 {
   "imports": {
     "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/",
+    "topojson-client": "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm"
   }
 }
 </script>
@@ -27,18 +28,21 @@
 </div>
 
 <div id="orbital-shell">
-  <main id="globe-pane" aria-label="3D orbit visualization">
+  <main id="globe-pane" aria-label="Orbit visualization">
     <canvas id="globe-canvas"></canvas>
+    <canvas id="fallback-canvas" hidden aria-hidden="true"></canvas>
+    <div id="globe-fallback-badge" class="globe-badge" hidden>2D projection · WebGL unavailable</div>
     <div id="globe-hud">
-      <div class="hud-title">ORBIT GHOST</div>
-      <div class="hud-sub">SGP4 · RTN residual · CUSUM</div>
+      <div class="hud-title">ISS now</div>
+      <div class="hud-sub" id="hud-now">Waiting for NASA file…</div>
       <div id="globe-legend">
-        <span class="leg"><i class="dot ref"></i> reference</span>
-        <span class="leg"><i class="dot obs"></i> observed</span>
-        <span class="leg"><i class="dot flag"></i> residual peak</span>
+        <span class="leg"><i class="dot obs"></i> NASA ISS 3D model</span>
+        <span class="leg"><i class="dot ref"></i> catalog ISS (same mesh, blue)</span>
+        <span class="leg" id="leg-gain"></span>
       </div>
+      <div id="globe-object" class="hud-object" hidden></div>
     </div>
-    <div id="globe-hint">drag rotate · scroll zoom · residual ribbon scales offset</div>
+    <div id="globe-hint">Drag to turn Earth · scroll to zoom · gold is NASA, blue is the catalog</div>
   </main>
 
   <aside id="orbital-sidebar" aria-label="Controls and alerts">
@@ -49,60 +53,156 @@
         <span class="nav-here">Orbit Ghost</span>
       </div>
       <h1>Orbit Ghost</h1>
-      <p class="lede">Synthetic Δv residual detection for SDA training / experiment tooling. Human-tasked path only.</p>
-      <div id="stats-bar" role="status">
-        <span class="stat"><span class="stat-value" id="stat-catalog">—</span><span class="stat-label">catalog</span></span>
-        <span class="stat"><span class="stat-value" id="stat-flagged">—</span><span class="stat-label">flagged</span></span>
-        <span class="stat"><span class="stat-value" id="stat-maxres">—</span><span class="stat-label">max res km</span></span>
-      </div>
+      <p class="lede" id="how-to">You do not need to click anything. This page pulls NASA’s ISS file and the public catalog, then shows how far apart they are.</p>
+      <p id="verdict" class="verdict" role="status">Loading NASA ISS file…</p>
     </header>
 
-    <section class="panel" aria-label="Detection controls">
-      <h2>Detect</h2>
-      <label class="field">
-        <span>Δv (m/s)</span>
-        <input type="range" id="dv-slider" min="0" max="10" step="0.1" value="0" />
-        <output id="dv-value" for="dv-slider">0.0</output>
-      </label>
-      <label class="field">
-        <span>Samples</span>
-        <input type="number" id="n-samples" min="40" max="400" value="120" />
-      </label>
+    <section class="panel panel-hero" aria-label="What the gap means">
+      <h2>Where the catalog is wrong</h2>
+      <dl id="rtn-readout" class="rtn-grid" aria-label="How NASA and the catalog disagree">
+        <div>
+          <dt>Along-track</dt>
+          <dd id="rtn-t">—</dd>
+          <p class="rtn-help">Ahead or behind in the orbit. This is usually the whole story.</p>
+        </div>
+        <div>
+          <dt>≈ seconds late</dt>
+          <dd id="rtn-sec">—</dd>
+          <p class="rtn-help">Same gap as time: 38 km at ISS speed is about 5 seconds.</p>
+        </div>
+        <div>
+          <dt>Height</dt>
+          <dd id="rtn-r">—</dd>
+          <p class="rtn-help">Up/down. Near zero means NASA and the catalog agree on altitude.</p>
+        </div>
+        <div>
+          <dt>Sideways</dt>
+          <dd id="rtn-n">—</dd>
+          <p class="rtn-help">Left/right of the orbit plane. A few km is leftover frame error.</p>
+        </div>
+      </dl>
       <div class="btn-row">
-        <button type="button" id="btn-clean" class="btn-secondary">Clean track</button>
-        <button type="button" id="btn-detect" class="btn-primary">Run detect</button>
+        <button type="button" id="btn-observe" class="btn-primary">Refresh NASA vs catalog</button>
       </div>
-      <p id="detect-status" class="status-line" aria-live="polite">Ready.</p>
+      <p id="observe-status" class="status-line" aria-live="polite">Fetching NASA ISS OEM…</p>
+      <div id="sources-card" class="sources-card" hidden>
+        <h3>Data on this screen</h3>
+        <ul id="sources-list"></ul>
+      </div>
+      <p id="frame-disclosure" class="disclosure-line" hidden></p>
+      <div id="chart-block" class="chart-block" hidden>
+        <div class="chart-head">
+          <span class="chart-title">Along-track gap over the NASA window</span>
+          <span class="chart-key">
+            <i class="ck mag"></i>along km
+            <i class="ck cusum"></i>change score
+          </span>
+        </div>
+        <canvas id="residual-chart" height="140" aria-label="Along-track residual over time"></canvas>
+      </div>
+      <details class="lab-fold tight" id="lab-advanced">
+        <summary>Advanced <span class="fold-tag">source / samples</span></summary>
+        <div class="lab-body">
+          <label class="field">
+            <span>OEM source</span>
+            <select id="oem-source" aria-label="OEM data source">
+              <option value="auto" selected>auto (live → cache → fixture)</option>
+              <option value="live">live NASA S3</option>
+              <option value="fixture">fixture (offline)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>How many NASA points</span>
+            <input type="number" id="oem-samples" min="20" max="400" value="90" />
+          </label>
+        </div>
+      </details>
     </section>
 
-    <section class="panel" aria-label="Evaluation">
-      <h2>Eval suite</h2>
-      <p class="hint">Labeled synthetic: clean vs fixed Δv. Same Ghost Track posture — metrics first.</p>
-      <div class="btn-row">
-        <button type="button" id="btn-eval" class="btn-primary">Run eval</button>
+    <details class="lab-fold" id="lab-field">
+      <summary>Other satellites <span class="fold-tag">CelesTrak</span></summary>
+      <div class="lab-body">
+        <p class="hint">Background catalog only. The gold/blue gap is still ISS.</p>
+        <label class="field">
+          <span>Group</span>
+          <select id="group-select" aria-label="CelesTrak group">
+            <option value="stations" selected>stations (~22)</option>
+            <option value="visual">visual (~157, capped)</option>
+            <option value="active">active (capped 300)</option>
+            <option value="starlink">starlink (capped 300)</option>
+          </select>
+        </label>
+        <div class="btn-row">
+          <button type="button" id="btn-field" class="btn-secondary">Load field</button>
+          <button type="button" id="btn-refresh" class="btn-ghost">Refresh</button>
+        </div>
+        <p id="field-status" class="status-line" aria-live="polite">Catalog loads in the background.</p>
       </div>
-      <div id="metrics-card" class="metrics-card metrics-empty">
-        <div class="m-row"><span>F1</span><strong id="m-f1">—</strong></div>
-        <div class="m-row"><span>Precision</span><strong id="m-p">—</strong></div>
-        <div class="m-row"><span>Recall</span><strong id="m-r">—</strong></div>
-        <div class="m-row"><span>Δv @ 95%</span><strong id="m-bound">—</strong></div>
-        <p id="m-disclosure" class="disclosure"></p>
-      </div>
-    </section>
+    </details>
 
-    <section class="panel" aria-label="Flags">
-      <h2>Flags</h2>
+    <details class="lab-fold" id="lab-synthetic">
+      <summary>Synthetic Δv lab <span class="fold-tag">training</span></summary>
+      <div class="lab-body">
+        <label class="field">
+          <span>Object</span>
+          <select id="object-select" aria-label="Catalog object">
+            <option value="">— select after load —</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Δv inject (m/s)</span>
+          <input type="range" id="dv-slider" min="0" max="10" step="0.1" value="0" />
+          <output id="dv-value" for="dv-slider">0.0</output>
+        </label>
+        <label class="field">
+          <span>Samples</span>
+          <input type="number" id="n-samples" min="40" max="400" value="120" />
+        </label>
+        <div class="btn-row">
+          <button type="button" id="btn-clean" class="btn-secondary">Clean track</button>
+          <button type="button" id="btn-detect" class="btn-primary">Run detect</button>
+          <button type="button" id="btn-demo" class="btn-ghost" title="Clean → Δv 0.5 → detect">Demo Δv</button>
+        </div>
+        <p id="detect-status" class="status-line" aria-live="polite">Labels known by construction.</p>
+      </div>
+    </details>
+
+    <details class="lab-fold" id="lab-eval">
+      <summary>Eval suite <span class="fold-tag">synthetic</span></summary>
+      <div class="lab-body">
+        <p class="hint">Labeled clean vs fixed Δv. Detector metrics, not NASA ground truth.</p>
+        <div class="btn-row">
+          <button type="button" id="btn-eval" class="btn-secondary">Run eval</button>
+        </div>
+        <div id="metrics-card" class="metrics-card metrics-empty" aria-busy="false">
+          <div class="m-row"><span>F1</span><strong id="m-f1">—</strong></div>
+          <div class="m-row"><span>Precision</span><strong id="m-p">—</strong></div>
+          <div class="m-row"><span>Recall</span><strong id="m-r">—</strong></div>
+          <div class="m-row"><span>Δv @ 95%</span><strong id="m-bound">—</strong></div>
+          <div class="m-row"><span>Separation</span><strong id="m-sep">—</strong></div>
+          <div class="m-row"><span>Tracks</span><strong id="m-n">—</strong></div>
+          <p id="m-disclosure" class="disclosure"></p>
+        </div>
+      </div>
+    </details>
+
+    <section class="panel panel-grow" aria-label="Did anything change">
+      <div class="panel-head">
+        <h2>Did the gap jump?</h2>
+        <span id="flags-count" class="panel-count" hidden></span>
+      </div>
       <div id="flags-list" class="flags-list">
-        <div class="empty-state">No flags · run detect with Δv &gt; 0</div>
+        <div class="empty-state">No jump. The catalog is offset by a steady amount, not a burn.</div>
       </div>
     </section>
 
     <footer id="portfolio-footer">
-      Orbit Ghost P1 · fixture default · CelesTrak optional · no actuation
+      <span id="footer-metrics">NASA ISS file vs public catalog</span>
+      <span class="footer-note">NASA 3D Resources meshes · not radar · no actuation</span>
     </footer>
   </aside>
 </div>
 
-<script type="module" src="/static/orbital.js?v=1"></script>
+<script type="module" src="/static/orbital.js?v=12"></script>
 </body>
 </html>

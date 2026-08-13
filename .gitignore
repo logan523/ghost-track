@@ -32,3 +32,4 @@ data/labeled/*
 
 # Orbit Ghost CelesTrak cache
 data/orbital/cache/
+.gstack/
